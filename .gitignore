@@ -1,7 +1,10 @@
-node_modules/
+node_modules
 dist/
 .DS_Store
-build/
+# build/ holds generated files; keep only the icons electron-builder packages
+build/*
+!build/icon.icns
+!build/icon.png
 .backup-*/
 .ui-backup-*/
 *.log

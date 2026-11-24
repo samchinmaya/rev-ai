@@ -8,6 +8,16 @@ const { Inbox } = require('./inbox');
 const { ClaudeCodeRunner, findClaude } = require('./claudecode');
 
 const SHORTCUT = 'CommandOrControl+Shift+Space';
+const IS_MAC = process.platform === 'darwin';
+const IS_WIN = process.platform === 'win32';
+const IS_LINUX = process.platform === 'linux';
+const SHORTCUT_LABEL = IS_MAC ? '⌘⇧Space' : 'Ctrl+Shift+Space';
+// Where saved API keys are encrypted, in words for Settings.
+const SECRET_STORE = IS_MAC ? 'your macOS keychain' : IS_WIN ? 'Windows (DPAPI, tied to your account)' : 'your system keyring (GNOME Keyring / KWallet)';
+
+// Wayland: let Electron register the global shortcut through the desktop portal.
+if (IS_LINUX) app.commandLine.appendSwitch('enable-features', 'GlobalShortcutsPortal');
+if (IS_WIN) app.setAppUserModelId('dev.revai.app'); // needed for Windows toast notifications
 
 let win = null;
 let tray = null;
@@ -76,12 +86,19 @@ function appSize() {
 const windowSize = ({ w, h }) => ({ width: Math.max(w + 60, 420), height: Math.max(h + 70, 120) });
 let expanded = false;
 
+// On macOS the island hangs from the very top so it merges with the notch. Elsewhere there is no notch,
+// so it floats as a pill at the top center of the work area (below a top taskbar or GNOME's top bar).
+// On Linux the window can't let clicks through while still seeing the pointer, so there is no
+// collapsed pill: the window shows when opened (tray, shortcut) and hides when it closes.
+const FLOAT_TOP = 8;
 function placeIsland(size = appSize()) {
   if (!win) return;
   const d = screen.getPrimaryDisplay();
+  const area = IS_MAC ? d.bounds : d.workArea;
   const { width, height } = windowSize(size);
-  const x = Math.round(d.bounds.x + (d.bounds.width - width) / 2);
-  win.setBounds({ x, y: d.bounds.y, width, height: Math.min(height, d.bounds.height) }, false);
+  const x = Math.round(area.x + (area.width - width) / 2);
+  const y = IS_MAC ? area.y : area.y + (IS_LINUX ? 0 : FLOAT_TOP);
+  win.setBounds({ x, y, width, height: Math.min(height, area.height) }, false);
 }
 
 function setIslandSize(size, save) {
@@ -117,10 +134,10 @@ function createWindow() {
       sandbox: true,
     },
   });
-  // Above the menu bar and full-screen apps, on every Space.
+  // Above the menu bar and full-screen apps, on every Space / virtual desktop.
   win.setAlwaysOnTop(true, 'screen-saver');
-  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  win.setIgnoreMouseEvents(true, { forward: true });
+  if (!IS_WIN) win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  if (!IS_LINUX) win.setIgnoreMouseEvents(true, { forward: true });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https:\/\//.test(url)) shell.openExternal(url);
@@ -129,7 +146,9 @@ function createWindow() {
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.once('ready-to-show', () => {
     placeIsland();
-    win.showInactive();
+    // Linux has no always-visible pill, so open once at launch to show where Rev is.
+    if (IS_LINUX) expandIsland();
+    else win.showInactive();
   });
   win.on('blur', () => {
     if (settings.pinned || modalOpen || pendingConfirms.size) return;
@@ -143,10 +162,13 @@ function createWindow() {
 function expandIsland() {
   if (!win) return;
   expanded = true;
-  if (!win.isVisible()) win.showInactive();
-  win.setIgnoreMouseEvents(false);
+  if (IS_LINUX) {
+    placeIsland();
+    win.show();
+  } else if (!win.isVisible()) win.showInactive();
+  if (!IS_LINUX) win.setIgnoreMouseEvents(false);
   win.webContents.send('island', 'expanded');
-  app.focus({ steal: true });
+  if (IS_MAC) app.focus({ steal: true });
   win.focus();
 }
 
@@ -154,7 +176,8 @@ function collapseIsland() {
   if (!win || !expanded) return;
   expanded = false;
   win.webContents.send('island', 'collapsed');
-  win.setIgnoreMouseEvents(true, { forward: true });
+  if (IS_LINUX) win.hide();
+  else win.setIgnoreMouseEvents(true, { forward: true });
 }
 
 // Kept for the code paths that already call these names.
@@ -170,6 +193,7 @@ function setPinned(on) {
   settings.pinned = Boolean(on);
   saveSettings(settings);
   win?.webContents.send('pinned', settings.pinned);
+  refreshTrayMenu();
 }
 
 // The Rev logo (assets/app-icon.svg, rendered by `npm run icons`).
@@ -180,15 +204,22 @@ const LOGO_MENU = () => {
   return img;
 };
 
+// macOS tints the black template icon to match the menu bar. Windows taskbars and Linux panels
+// don't, and are usually dark, so there the tray shows the full-color app icon.
+function trayIcon() {
+  if (IS_MAC) return LOGO_MENU();
+  return nativeImage.createFromPath(APP_ICON).resize({ width: IS_WIN ? 32 : 24, height: IS_WIN ? 32 : 24, quality: 'best' });
+}
+
 function trayMenu() {
   return Menu.buildFromTemplate([
-    { label: 'Open Rev', icon: LOGO_MENU(), accelerator: 'CommandOrControl+Shift+Space', click: showWindow },
+    { label: 'Open Rev', icon: IS_MAC ? LOGO_MENU() : undefined, accelerator: 'CommandOrControl+Shift+Space', click: showWindow },
     { label: 'Open GitHub Notifications', click: () => shell.openExternal('https://github.com/notifications') },
     { label: 'Mark All Notifications Read', enabled: inbox?.unreadCount > 0, click: () => inbox.markAllRead() },
     { type: 'separator' },
     { label: 'Reset Size', click: () => win?.webContents.send('island-size', setIslandSize(DEFAULT_SIZE, true)) },
     { label: 'Keep Island Open', type: 'checkbox', checked: Boolean(settings.pinned), click: (i) => setPinned(i.checked) },
-    { label: 'Desktop Notifications', type: 'checkbox', checked: settings.notify !== false, click: (i) => { settings.notify = i.checked; saveSettings(settings); } },
+    { label: 'Desktop Notifications', type: 'checkbox', checked: settings.notify !== false, click: (i) => { settings.notify = i.checked; saveSettings(settings); refreshTrayMenu(); } },
     { label: 'New Conversation', click: () => { agent.reset(); claudeRunner.reset(); win?.webContents.send('chat-reset'); } },
     { type: 'separator' },
     { label: 'Quit Rev', accelerator: 'CommandOrControl+Q', click: () => app.quit() },
@@ -196,18 +227,28 @@ function trayMenu() {
 }
 
 function createTray() {
-  const icon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'trayTemplate.png'));
-  icon.setTemplateImage(true); // macOS tints it to match the menu bar
-  tray = new Tray(icon);
+  tray = new Tray(trayIcon());
   tray.setToolTip('Rev AI');
-  tray.on('click', toggleWindow);
-  tray.on('right-click', () => tray.popUpContextMenu(trayMenu()));
+  if (IS_LINUX) {
+    // Linux panels (StatusNotifierItem / AppIndicator) only show a menu: clicks don't reach the app.
+    // GNOME needs the "AppIndicator and KStatusNotifierItem Support" extension to show it at all.
+    refreshTrayMenu();
+  } else {
+    tray.on('click', toggleWindow);
+    tray.on('right-click', () => tray.popUpContextMenu(trayMenu()));
+  }
+}
+
+// Linux keeps a fixed tray menu, so rebuild it when what it shows changes.
+function refreshTrayMenu() {
+  if (IS_LINUX && tray) tray.setContextMenu(trayMenu());
 }
 
 function updateBadge(count) {
   if (!tray) return;
-  tray.setTitle(count ? ` ${count > 99 ? '99+' : count}` : '', { fontType: 'monospacedDigit' });
+  if (IS_MAC) tray.setTitle(count ? ` ${count > 99 ? '99+' : count}` : '', { fontType: 'monospacedDigit' });
   tray.setToolTip(count ? `Rev AI · ${count} unread on GitHub` : 'Rev AI');
+  refreshTrayMenu();
 }
 
 // ---------- GitHub notifications ----------
@@ -219,7 +260,7 @@ function startInbox() {
       win?.webContents.send('inbox', { items, error: inbox.error });
     },
     onNew: (fresh) => {
-      win?.webContents.send('island-peek', fresh[0]);
+      if (!IS_LINUX) win?.webContents.send('island-peek', fresh[0]); // Linux has no pill to peek from
       if (settings.notify === false || !Notification.isSupported()) return;
       const list = fresh.slice(0, 3);
       for (const it of list) {
@@ -262,6 +303,18 @@ function emit(ev) {
   win?.webContents.send('agent-event', ev);
 }
 
+/**
+ * Can saved keys really be encrypted? On Linux without a keyring, Electron falls back to a
+ * hard-coded password ("basic_text"), which is no better than plain text, so we refuse that.
+ */
+function secretStoreUsable() {
+  if (!safeStorage.isEncryptionAvailable()) return false;
+  if (IS_LINUX && typeof safeStorage.getSelectedStorageBackend === 'function') {
+    return !['basic_text', 'unknown'].includes(safeStorage.getSelectedStorageBackend());
+  }
+  return true;
+}
+
 ipcMain.handle('state', async () => ({
   hasKey: Boolean(getApiKey()),
   claudeAvailable: Boolean(findClaude()),
@@ -271,7 +324,9 @@ ipcMain.handle('state', async () => ({
   repos: settings.repos,
   repo: await repoInfo(settings.currentRepo),
   model: MODEL,
-  shortcut: '⌘⇧Space',
+  shortcut: SHORTCUT_LABEL,
+  platform: process.platform,
+  secretStore: SECRET_STORE,
   pinned: Boolean(settings.pinned),
   notify: settings.notify !== false,
   islandSize: appSize(),
@@ -283,8 +338,10 @@ ipcMain.handle('state', async () => ({
 ipcMain.handle('set-api-key', (_e, key) => {
   key = String(key || '').trim();
   if (!key) delete settings.apiKeyEnc;
-  else if (safeStorage.isEncryptionAvailable()) settings.apiKeyEnc = safeStorage.encryptString(key).toString('base64');
-  else throw new Error('Keychain encryption is not available; set ANTHROPIC_API_KEY or OPENROUTER_API_KEY instead.');
+  else if (secretStoreUsable()) settings.apiKeyEnc = safeStorage.encryptString(key).toString('base64');
+  else throw new Error(IS_LINUX
+    ? 'No system keyring found (install and unlock GNOME Keyring or KWallet), so Rev won\'t save the key. You can set GROQ_API_KEY, OPENROUTER_API_KEY or ANTHROPIC_API_KEY instead.'
+    : 'Secure key storage is not available; set GROQ_API_KEY, OPENROUTER_API_KEY or ANTHROPIC_API_KEY instead.');
   saveSettings(settings);
   return { hasKey: Boolean(getApiKey()), provider: getProvider()?.type || null };
 });
@@ -369,7 +426,7 @@ ipcMain.handle('hide', () => collapseIsland());
 ipcMain.handle('expand', () => expandIsland());
 // While collapsed, the renderer tells us when the pointer is over the pill so it can be clicked.
 ipcMain.handle('island-hover', (_e, over) => {
-  if (!expanded) win.setIgnoreMouseEvents(!over, { forward: true });
+  if (!expanded && !IS_LINUX) win.setIgnoreMouseEvents(!over, { forward: true });
 });
 ipcMain.handle('set-pinned', (_e, on) => setPinned(on));
 // While you drag the resize handle the window follows; on release the size is saved.
@@ -386,9 +443,15 @@ ipcMain.handle('set-notify', (_e, on) => { settings.notify = Boolean(on); saveSe
 ipcMain.handle('quit', () => app.quit());
 
 // ---------- lifecycle ----------
+// One Rev at a time; launching it again (Start menu, app launcher) opens the running one.
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) app.quit();
+else app.on('second-instance', () => expandIsland());
+
 app.whenReady().then(() => {
+  if (!gotLock) return;
   settings = loadSettings();
-  if (process.platform === 'darwin') {
+  if (IS_MAC) {
     app.dock?.setIcon(APP_ICON); // Rev logo instead of Electron's, if the Dock icon is ever shown
     app.dock?.hide(); // behave like an overlay, not a regular app
   }

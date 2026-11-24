@@ -8,7 +8,8 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fakeclaude-'));
-const fake = path.join(dir, 'claude');
+// Windows can't run a shebang script, so there the fake is a .js file that Rev starts with Node.
+const fake = path.join(dir, process.platform === 'win32' ? 'claude.js' : 'claude');
 fs.writeFileSync(fake, `#!/usr/bin/env node
 const fs = require('fs');
 const a = process.argv.slice(2);
@@ -57,4 +58,19 @@ test('Claude Code runs Rev tools through the approval gate', async () => {
   await runner.send('again', { provider: { type: 'claude-code' }, cwd: repo, emit: () => {}, confirm: async () => false });
   const again = JSON.parse(fs.readFileSync(path.join(dir, 'args.json'), 'utf8')).args;
   assert.strictEqual(again[again.indexOf('--resume') + 1], 'sess-1');
+});
+
+test('launchSpec runs .js and npm .cmd installs through Node, native binaries directly', () => {
+  const { launchSpec } = require('../src/claudecode');
+  assert.deepStrictEqual(launchSpec('/usr/local/bin/claude', 'linux'), { cmd: '/usr/local/bin/claude', pre: [], env: {} });
+  const js = launchSpec(fake.replace(/(\.js)?$/, '.js'), 'linux');
+  assert.strictEqual(js.cmd, process.execPath);
+  assert.strictEqual(js.env.ELECTRON_RUN_AS_NODE, '1');
+  // an npm shim with no cli.js next to it can't be started safely
+  assert.strictEqual(launchSpec(path.join(dir, 'claude.cmd'), 'win32'), null);
+  const npmDir = fs.mkdtempSync(path.join(os.tmpdir(), 'npmshim-'));
+  const cli = path.join(npmDir, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
+  fs.mkdirSync(path.dirname(cli), { recursive: true });
+  fs.writeFileSync(cli, '');
+  assert.deepStrictEqual(launchSpec(path.join(npmDir, 'claude.cmd'), 'win32').pre, [cli]);
 });

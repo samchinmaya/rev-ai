@@ -1,5 +1,6 @@
 // GitHub inbox: polls your GitHub notifications through gh and reports new ones.
 const { run } = require('./exec');
+const os = require('node:os');
 
 const REASONS = {
   review_requested: 'Review requested',
@@ -75,7 +76,7 @@ class Inbox {
   }
 
   async poll() {
-    const res = await run('gh', ['api', 'notifications?all=false&per_page=50'], process.env.HOME);
+    const res = await run('gh', ['api', 'notifications?all=false&per_page=50'], os.homedir());
     if (res.code !== 0) {
       this.error = /not installed/.test(res.stderr)
         ? 'GitHub CLI (gh) is not installed.'
@@ -108,7 +109,7 @@ class Inbox {
   }
 
   async markRead(id) {
-    const r = await run('gh', ['api', '-X', 'PATCH', `notifications/threads/${encodeURIComponent(id)}`], process.env.HOME);
+    const r = await run('gh', ['api', '-X', 'PATCH', `notifications/threads/${encodeURIComponent(id)}`], os.homedir());
     if (r.code === 0) {
       const it = this.items.find((i) => i.id === String(id));
       if (it) it.unread = false;
@@ -119,7 +120,7 @@ class Inbox {
   }
 
   async markAllRead() {
-    const r = await run('gh', ['api', '-X', 'PUT', 'notifications', '-F', 'read=true'], process.env.HOME);
+    const r = await run('gh', ['api', '-X', 'PUT', 'notifications', '-F', 'read=true'], os.homedir());
     if (r.code === 0) {
       this.items = [];
       this.onUpdate(this.items);

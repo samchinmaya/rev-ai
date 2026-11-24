@@ -9,26 +9,52 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { SYSTEM, TOOL_DEFS, TOOL_ARGS_SCHEMA, runTool } = require('./agent');
 
-const CANDIDATES = () => [
-  process.env.REV_CLAUDE_BIN,
-  path.join(os.homedir(), '.claude', 'local', 'claude'),
-  path.join(os.homedir(), '.local', 'bin', 'claude'),
-  path.join(os.homedir(), '.homebrew', 'bin', 'claude'),
-  '/opt/homebrew/bin/claude',
-  '/usr/local/bin/claude',
-  ...(process.env.PATH || '').split(':').filter(Boolean).map((d) => path.join(d, 'claude')),
-];
+const { searchPath } = require('./exec');
+
+const IS_WIN = process.platform === 'win32';
+// On Windows the native installer makes claude.exe; an npm install makes claude.cmd.
+const NAMES = IS_WIN ? ['claude.exe', 'claude.cmd'] : ['claude'];
+
+const CANDIDATES = () => {
+  const dirs = [
+    path.join(os.homedir(), '.claude', 'local'),
+    path.join(os.homedir(), '.local', 'bin'),
+    ...(IS_WIN ? [] : [path.join(os.homedir(), '.homebrew', 'bin'), '/opt/homebrew/bin', '/usr/local/bin']),
+    ...searchPath().split(path.delimiter).filter(Boolean),
+  ];
+  return [process.env.REV_CLAUDE_BIN, ...dirs.flatMap((d) => NAMES.map((n) => path.join(d, n)))];
+};
+
+function usable(p) {
+  try {
+    if (!fs.statSync(p).isFile()) return false;
+    if (!IS_WIN) fs.accessSync(p, fs.constants.X_OK); // Windows has no execute bit
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** Path of the claude CLI, or null when it isn't installed. */
 function findClaude() {
-  for (const p of CANDIDATES()) {
-    if (!p) continue;
-    try {
-      fs.accessSync(p, fs.constants.X_OK);
-      return p;
-    } catch { /* keep looking */ }
-  }
+  for (const p of CANDIDATES()) if (p && usable(p)) return p;
   return null;
+}
+
+/**
+ * How to start the CLI at `bin` without a shell. Node refuses to spawn .cmd/.bat files without one,
+ * and a shell would mangle the JSON and prompt we pass, so an npm install on Windows runs its cli.js
+ * with Node directly (Electron acts as Node when ELECTRON_RUN_AS_NODE is set).
+ */
+function launchSpec(bin, platform = process.platform) {
+  const viaNode = (script) => ({ cmd: process.execPath, pre: [script], env: { ELECTRON_RUN_AS_NODE: '1' } });
+  if (/\.(c|m)?js$/i.test(bin)) return viaNode(bin);
+  if (platform === 'win32' && /\.(cmd|bat)$/i.test(bin)) {
+    const cli = path.join(path.dirname(bin), 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
+    if (fs.existsSync(cli)) return viaNode(cli);
+    return null;
+  }
+  return { cmd: bin, pre: [], env: {} };
 }
 
 // ---------- the MCP server (Streamable HTTP, JSON responses) ----------
@@ -109,8 +135,9 @@ class ClaudeCodeRunner {
 
   async send(prompt, ctx) {
     const bin = findClaude();
-    if (!bin) {
-      ctx.emit({ type: 'error', text: 'Claude Code is not installed. Install it from claude.com/code, sign in by running `claude` once in Terminal, then try again.' });
+    const launch = bin && launchSpec(bin);
+    if (!launch) {
+      ctx.emit({ type: 'error', text: 'Claude Code is not installed. Install it from claude.com/code, sign in by running `claude` once in a terminal, then try again.' });
       ctx.emit({ type: 'done' });
       return;
     }
@@ -126,7 +153,8 @@ class ClaudeCodeRunner {
     ];
     if (this.sessionId) args.push('--resume', this.sessionId);
     // Use the Claude plan you're signed in with, not an API key that may be set in the environment.
-    const env = { ...process.env, MCP_TOOL_TIMEOUT: String(30 * 60 * 1000) };
+    const env = { ...process.env, PATH: searchPath(), ...launch.env, MCP_TOOL_TIMEOUT: String(30 * 60 * 1000) };
+    delete env.Path;
     delete env.ANTHROPIC_API_KEY;
     delete env.ANTHROPIC_AUTH_TOKEN;
 
@@ -135,7 +163,7 @@ class ClaudeCodeRunner {
     let finalError = null;
     let stderr = '';
     await new Promise((resolve) => {
-      const child = spawn(bin, args, { cwd: ctx.cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
+      const child = spawn(launch.cmd, [...launch.pre, ...args], { cwd: ctx.cwd, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
       this.child = child;
       let buf = '';
       child.stdout.on('data', (d) => {
@@ -170,7 +198,7 @@ class ClaudeCodeRunner {
     activeCtx = null;
     if (finalError) {
       const text = /log ?in|logged|auth|api key|credential|oauth/i.test(finalError) && finalError !== 'Stopped.'
-        ? 'Claude Code is not signed in. Run `claude` in Terminal, sign in with your Claude account, then try again.'
+        ? 'Claude Code is not signed in. Run `claude` in a terminal, sign in with your Claude account, then try again.'
         : finalError;
       ctx.emit({ type: 'error', text });
     }
@@ -178,4 +206,4 @@ class ClaudeCodeRunner {
   }
 }
 
-module.exports = { ClaudeCodeRunner, findClaude, ensureServer, handleRpc };
+module.exports = { ClaudeCodeRunner, findClaude, launchSpec, ensureServer, handleRpc };

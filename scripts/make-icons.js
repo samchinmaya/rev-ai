@@ -1,4 +1,4 @@
-// Turns the logo SVGs in assets/ into every PNG the app needs, plus the macOS app icon.
+// Turns the logo SVGs in assets/ into every PNG the app needs, plus the app icons for macOS, Windows and Linux.
 // Run with: npm run icons   (edit assets/app-icon.svg or assets/logo.svg first if you want to change the logo)
 const { app, BrowserWindow, nativeImage } = require('electron');
 const fs = require('fs');
@@ -31,7 +31,8 @@ app.whenReady().then(async () => {
   });
   const icon = await rasterize(win, 'assets/app-icon.svg');
   for (const s of [16, 32, 64, 128, 256, 512, 1024]) save(icon, s, `assets/app-icon-${s}.png`);
-  save(icon, 512, 'src/assets/icon.png'); // used for notifications and the Dock
+  save(icon, 512, 'src/assets/icon.png'); // used for notifications, the Dock and the Windows/Linux tray
+  save(icon, 1024, 'build/icon.png'); // Windows .ico and Linux icons are made from this by electron-builder
   const logo = await rasterize(win, 'assets/logo.svg');
   for (const s of [64, 256, 512]) save(logo, s, `assets/logo-${s}.png`);
 
@@ -46,6 +47,6 @@ app.whenReady().then(async () => {
     fs.mkdirSync(out('build'), { recursive: true });
     execFileSync('iconutil', ['-c', 'icns', set, '-o', out('build/icon.icns')]);
   }
-  console.log('Icons written to assets/, src/assets/icon.png' + (process.platform === 'darwin' ? ' and build/icon.icns' : ''));
+  console.log('Icons written to assets/, src/assets/icon.png, build/icon.png' + (process.platform === 'darwin' ? ' and build/icon.icns' : ''));
   app.quit();
 });

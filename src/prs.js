@@ -1,5 +1,6 @@
 // PR manager: reads and acts on pull requests through the gh CLI.
-const { run } = require('./exec');
+const { run, ghInstallHint } = require('./exec');
+const os = require('node:os');
 
 const REPO_FIELDS = 'number,title,url,headRefName,baseRefName,author,isDraft,reviewDecision,statusCheckRollup,mergeable,updatedAt';
 const SEARCH_FIELDS = 'number,title,url,repository,isDraft,updatedAt,author';
@@ -39,14 +40,14 @@ async function canMergeIn(repo, dir) {
 }
 
 async function load(cwd) {
-  const dir = cwd || process.env.HOME;
+  const dir = cwd || os.homedir();
   const result = { repo: [], mine: [], review: [], errors: [] };
 
   const auth = await run('gh', ['auth', 'status'], dir);
   if (auth.code !== 0) {
     result.errors.push(
       /not installed/.test(auth.stderr)
-        ? 'GitHub CLI (gh) is not installed. Run: brew install gh'
+        ? `GitHub CLI (gh) is not installed. Install it: ${ghInstallHint()}`
         : 'GitHub CLI is not signed in. Run: gh auth login',
     );
     return result;
@@ -86,7 +87,7 @@ function checkout(cwd, number) {
 }
 
 async function merge(cwd, { repo, number, method, deleteBranch }) {
-  const dir = cwd || process.env.HOME;
+  const dir = cwd || os.homedir();
   if (repo && !(await canMergeIn(repo, dir))) {
     return { code: 1, stderr: `You don't have permission to merge pull requests in ${repo}.` };
   }
