@@ -1,6 +1,28 @@
-# Rev AI
+<p align="center"><img src="assets/app-icon-256.png" width="112" alt="Rev AI logo"></p>
 
-A small always-on-top window for your Mac that runs git and GitHub tasks from plain-English prompts, plus a separate pull request manager.
+<h1 align="center">Rev AI</h1>
+
+<p align="center">A Dynamic Island for your Mac that runs git and GitHub from plain English.<br>
+Push, pull, rebase, branch, commit and manage pull requests by asking, with an approval step before anything risky.</p>
+
+<p align="center">
+  <img src="docs/screenshots/chat.png" width="32%" alt="Asking Rev to rebase: the rebase waits for approval">
+  <img src="docs/screenshots/inbox.png" width="32%" alt="GitHub notifications inbox">
+  <img src="docs/screenshots/settings.png" width="32%" alt="Settings with Use my Claude plan">
+</p>
+
+## Highlights
+
+- **Lives around the notch.** Rev sits at the top center of the screen as a small black island. Click it or press ⌘⇧Space and it opens into the full app; click away and it shrinks back.
+- **Git by prompt.** "Commit my changes with a good message and push", "rebase on main", "why did my push get rejected?". Every command Rev runs appears as a card with its output.
+- **Safe by default.** A rule engine (`src/risk.js`) sorts every git and gh command. Force pushes, rebases, hard resets and merges stop for **Approve / Deny**; things like `gh auth` or secret changes are never allowed.
+- **Pull requests and notifications.** A PR tab with review state, checks and conflicts for your repo's PRs, your PRs and ones waiting on your review, with checkout, merge and new PR (Merge only shows when you have permission), plus a GitHub inbox that peeks out of the island when something new arrives.
+- **Bring your own AI.** Uses your Claude plan through Claude Code with no API key, or a Groq, OpenRouter or Anthropic key stored in the macOS keychain.
+- **Make it yours.** Drag to resize, and change size, text, corners and colour from a few CSS variables.
+
+**Companion widget:** [Rev Widget](https://github.com/samchinmaya/rev-ai-widget) puts your PRs and GitHub notifications in Notification Center and on the desktop.
+
+**Built with** Electron, plain JavaScript (no build step), the Anthropic SDK tool runner, a small local MCP server for Claude Code, the GitHub CLI, and Node's built-in test runner.
 
 ## Setup
 
@@ -9,7 +31,8 @@ You need Node 20+, git, and the GitHub CLI:
 ```sh
 brew install gh      # if you don't have it
 gh auth login        # Rev uses your gh sign-in for everything GitHub
-cd ~/code/rev-ai
+git clone https://github.com/samchinmaya/rev-ai.git
+cd rev-ai
 npm install
 npm start
 ```
