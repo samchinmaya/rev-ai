@@ -1,0 +1,33 @@
+{
+  "name": "rev-ai",
+  "version": "0.1.0",
+  "description": "Floating always-on-top AI assistant for git and GitHub pull requests",
+  "main": "src/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js",
+    "icons": "electron scripts/make-icons.js",
+    "dist": "npm run icons && electron-builder --mac --arm64"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.13.0"
+  },
+  "devDependencies": {
+    "electron": "^45.4.1",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "dev.revai.app",
+    "productName": "Rev AI",
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": "dmg",
+      "icon": "build/icon.icns"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ]
+  }
+}
