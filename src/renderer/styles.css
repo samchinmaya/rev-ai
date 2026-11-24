@@ -436,3 +436,17 @@ svg.logo circle { fill: currentColor; stroke: none; }
 .hint-mark { color: var(--accent, var(--blue)); filter: drop-shadow(0 0 8px color-mix(in srgb, var(--accent, var(--blue)) 45%, transparent)); }
 .sheet h3.sheet-brand { display: flex; align-items: center; justify-content: center; gap: 7px; }
 .brand-mark { width: 16px; height: 16px; color: var(--accent, var(--blue)); }
+
+/* ---------- Windows and Linux ---------- */
+/* No notch to grow out of: the island floats a little below the top edge as a fully rounded pill,
+   and the expanded app is a rounded card. Fonts fall back to each OS's UI font. */
+body.plat-win32, body.plat-linux {
+  --font: 'Segoe UI Variable Text', 'Segoe UI', system-ui, Ubuntu, Cantarell, 'Noto Sans', 'DejaVu Sans', sans-serif;
+  --mono: 'Cascadia Mono', Consolas, 'Ubuntu Mono', 'DejaVu Sans Mono', ui-monospace, monospace;
+}
+body.plat-win32 .island, body.plat-linux .island { border-radius: 17px; }
+body.plat-win32 .island.collapsed:hover, body.plat-linux .island.collapsed:hover { border-radius: 19px; }
+body.plat-win32 .island.peeking, body.plat-linux .island.peeking { border-radius: 30px; }
+body.plat-win32 .island.expanded, body.plat-linux .island.expanded { border-radius: 20px; }
+/* Linux: the window only exists while open, so skip the grow-from-pill animation. */
+body.plat-linux .island { transition: none; }

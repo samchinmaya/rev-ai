@@ -217,7 +217,7 @@ function setPinnedUi(on) {
   state.pinned = on;
   document.body.classList.toggle('pinned', on);
   $('pinBtn').classList.toggle('on', on);
-  $('pinBtn').title = on ? 'Pinned: stays on screen. Click to tuck back into the menu bar.' : 'Keep on screen';
+  $('pinBtn').title = on ? 'Pinned: stays on screen. Click to let it tuck away again.' : 'Keep on screen';
   $('pinToggle').checked = on;
 }
 $('pinBtn').onclick = () => { setPinnedUi(!state.pinned); rev.setPinned(state.pinned); };
@@ -252,8 +252,8 @@ function openSettings() {
   $('keyNote').textContent = state.keyFromEnv
     ? `Using your ${who} key from the environment.`
     : state.hasKey
-      ? `${who} key saved, encrypted in your macOS keychain.`
-      : 'Paste a Groq (gsk_…), OpenRouter (sk-or-…) or Anthropic (sk-ant-…) key. It is stored encrypted in your keychain.';
+      ? `${who} key saved, encrypted in ${state.secretStore}.`
+      : 'Paste a Groq (gsk_…), OpenRouter (sk-or-…) or Anthropic (sk-ant-…) key. It is stored encrypted in ' + state.secretStore + '.';
   const model = { 'claude-code': 'Claude via your Claude plan', openrouter: 'newest Claude Opus on OpenRouter', groq: 'a tool-calling model on Groq' }[state.provider] || state.model;
   $('about').textContent = `Model: ${model} · Open from anywhere: ${state.shortcut}`;
   $('notifyToggle').checked = state.notify;
@@ -541,7 +541,7 @@ function renderInbox({ items = [], error = null } = {}) {
     const e = el('div', 'inbox-empty');
     const ic = el('div');
     ic.innerHTML = check;
-    e.append(ic, el('div', 'big', 'You\u2019re all caught up'), el('div', 'small', 'New reviews, mentions, comments and CI results will show up here and as Mac notifications.'));
+    e.append(ic, el('div', 'big', 'You\u2019re all caught up'), el('div', 'small', 'New reviews, mentions, comments and CI results will show up here and as desktop notifications.'));
     if (!error) list.append(e);
     return;
   }
@@ -574,6 +574,9 @@ $('inboxReadAll').onclick = () => rev.inboxReadAll();
 // ---------- boot ----------
 (async () => {
   state = await rev.state();
+  // plat-darwin / plat-win32 / plat-linux: styles.css floats the island as a pill off the Mac.
+  document.body.classList.add(`plat-${state.platform}`);
+  $('pill').title = `Open Rev (${state.shortcut})`;
   applySize(state.islandSize);
   setPinnedUi(state.pinned);
   await refreshRepo(state.repo);

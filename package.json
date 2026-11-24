@@ -8,7 +8,10 @@
     "start": "electron .",
     "test": "node --test test/*.test.js",
     "icons": "electron scripts/make-icons.js",
-    "dist": "npm run icons && electron-builder --mac --arm64"
+    "dist": "npm run icons && electron-builder --mac --arm64",
+    "dist:mac": "electron-builder --mac --publish never",
+    "dist:win": "electron-builder --win --publish never",
+    "dist:linux": "electron-builder --linux --publish never"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.13.0"
@@ -20,14 +23,130 @@
   "build": {
     "appId": "dev.revai.app",
     "productName": "Rev AI",
+    "artifactName": "Rev-AI-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
     "mac": {
       "category": "public.app-category.developer-tools",
       "target": "dmg",
       "icon": "build/icon.icns"
     },
-    "files": [
-      "src/**/*",
-      "package.json"
-    ]
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Rev AI",
+      "artifactName": "Rev-AI-${version}-win-${arch}-setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "Rev-AI-${version}-win-${arch}-portable.${ext}"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Development",
+      "executableName": "rev-ai",
+      "synopsis": "AI assistant for git and GitHub pull requests",
+      "maintainer": "Chinmaya <118907055+samchinmaya@users.noreply.github.com>",
+      "desktop": {
+        "entry": {
+          "StartupWMClass": "Rev AI",
+          "Keywords": "git;github;pull request;ai;"
+        }
+      },
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "rpm",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "pacman",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "tar.gz",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "deb": {
+      "depends": [
+        "libnotify4",
+        "libsecret-1-0",
+        "libxss1",
+        "libnss3",
+        "xdg-utils"
+      ],
+      "recommends": [
+        "git",
+        "gh"
+      ]
+    },
+    "rpm": {
+      "depends": [
+        "libnotify",
+        "libsecret",
+        "nss",
+        "xdg-utils"
+      ],
+      "fpm": [
+        "--rpm-rpmbuild-define=_build_id_links none"
+      ]
+    }
+  },
+  "author": {
+    "name": "Chinmaya",
+    "email": "118907055+samchinmaya@users.noreply.github.com"
+  },
+  "homepage": "https://github.com/samchinmaya/rev-ai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/samchinmaya/rev-ai.git"
   }
 }
